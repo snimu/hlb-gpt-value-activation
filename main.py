@@ -651,7 +651,7 @@ def main(linear_value=False):
                 net.train()
         curr_microbatch_step += 1
 
-    return train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
+    return net, train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
 
 
 if __name__ == "__main__":
@@ -666,10 +666,12 @@ if __name__ == "__main__":
             print(f"\n\n{linear_value=} ({run_num+1}/{num_runs})\n\n")
 
             (
+                net,
                 train_losses, train_accs, val_losses, val_accs, val_pplxs,
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val,
             ) = main(linear_value=False)
+            del net  # Actively delete the network to free up memory
             results = {
                 "linear_value": [linear_value],
                 "run_number": [run_num+1],
