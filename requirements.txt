@@ -2,3 +2,5 @@ torch
 torchvision
 tiktoken
 pandas
+matplotlib
+numpy
