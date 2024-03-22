@@ -670,7 +670,7 @@ if __name__ == "__main__":
                 train_losses, train_accs, val_losses, val_accs, val_pplxs,
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val,
-            ) = main(linear_value=False)
+            ) = main(linear_value=linear_value)
             del net  # Actively delete the network to free up memory
             results = {
                 "linear_value": [linear_value],
