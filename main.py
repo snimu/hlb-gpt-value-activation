@@ -684,6 +684,7 @@ if __name__ == "__main__":
                 "tokens_seen_val": [str(tokens_seen_val)],
                 "epoch_train": [str(epoch_train)],
                 "epoch_val": [str(epoch_val)],
+                "seed": [seed],
             }
             if run_num == 0 and linear_value:
                 pd.DataFrame(results).to_csv("results.csv", index=False)
