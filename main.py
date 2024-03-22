@@ -60,7 +60,7 @@ import tiktoken
 # Model scales other than 1.0 are in alpha currently -- they should run okay, but are almost certainly not tuned efficiently yet! This should hopefully be addressed in a future update.
 model_scale         = 1.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
 max_sequence_length = 1024   # Can go up or down. Mostly tested up to 1024, some models can avoid OOMs even with length 8192 (not really tested)
-gpu_token_capacity  = int(114688*24/40) # Adapted to an A10 with 24GB VRAM. Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
+gpu_token_capacity  = int(114688*20/40) # Adapted to an A10 with 24GB VRAM (with some memory slack). Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
 
 # Approximates the amount of tokens the GPU can hold based upon the scale of the model (scaled somewhat conservatively to avoid most OOMs. May OOM in some weird edgecases.)
 # Batchsize is determined automatically based upon the current sequence length and the rough token-capacity of the GPU for a given model.
@@ -409,7 +409,7 @@ def grow_sequence_length(old_length, old_batchsize):
 #          Logging           #
 ##############################
 
-variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_perplexity', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_seconds']
+variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_seconds']
 # define the printing function and print the column heads
 def print_training_details(columns_list, separator_left='  ', separator_right='  |', column_labels_only=False, is_final_entry=False):
     output_line = "|" # start with the left bar
@@ -488,7 +488,7 @@ def main(linear_value=False):
     assert final_batchsize > 1, f"Error: Specified configuration takes up too much memory (calculated final batchsize {final_batchsize} is less than 1!)"
 
     # Validation parameters
-    val_loss, val_acc, val_perplexity = None, None, None
+    val_loss, val_acc, val_pplx = None, None, None
 
     # Get network
     net = make_net(linear_value)
@@ -507,6 +507,7 @@ def main(linear_value=False):
 
     # I track the train&val loss&acc each
     train_losses, train_accs, val_losses, val_accs = [], [], [], []
+    val_pplxs = []
     train_steps, val_steps = [], []
     tokens_seen_train, tokens_seen_val = [], []
     epoch_train, epoch_val = [], []
@@ -629,9 +630,10 @@ def main(linear_value=False):
                 train_loss = loss.detach().cpu().item() # Update the loss for the training details printout
 
                 net.eval()
-                val_acc, val_loss, val_perplexity = eval(net)
+                val_acc, val_loss, val_pplx = eval(net)
                 val_losses.append(val_loss)
                 val_accs.append(val_acc)
+                val_pplxs.append(val_pplx)
                 val_steps.append(curr_step)
                 tokens_seen_val.append(tokens_seen)
                 epoch_val.append(tokens_seen//len(data['train']))
@@ -649,7 +651,7 @@ def main(linear_value=False):
                 net.train()
         curr_microbatch_step += 1
 
-    return train_losses, train_accs, val_losses, val_accs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
+    return train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
 
 
 if __name__ == "__main__":
@@ -660,6 +662,7 @@ if __name__ == "__main__":
         "train_accs": [],
         "val_losses": [],
         "val_accs": [],
+        "val_pplxs": [],
         "train_steps": [],
         "val_steps": [],
         "tokens_seen_train": [],
@@ -678,7 +681,7 @@ if __name__ == "__main__":
             print(f"\n\n{linear_value=} ({run_num+1}/{num_runs})\n\n")
 
             (
-                train_losses, train_accs, val_losses, val_accs, 
+                train_losses, train_accs, val_losses, val_accs, val_pplxs,
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val,
             ) = main(linear_value=False)
@@ -688,6 +691,7 @@ if __name__ == "__main__":
             results["train_accs"].append(str(train_accs))
             results["val_losses"].append(str(val_losses))
             results["val_accs"].append(str(val_accs))
+            results["val_pplxs"].append(str(val_pplxs))
             results["train_steps"].append(str(train_steps))
             results["val_steps"].append(str(val_steps))
             results["tokens_seen_train"].append(str(tokens_seen_train))
