@@ -80,7 +80,7 @@ hyp = {
             'output_layer': 2.,
         },
         'weight_decay': 2.**5,     # This is the weight decay when the loss = 0., we approach it exponentially. Somewhat slows overfitting.
-        'total_train_steps': 1000, # We can run effectively infinitely, but is 1000 by default for the inference demo. For infinite runs, you can use the saved checkpoints from disk.
+        'total_train_steps': 500, # We can run effectively infinitely, but is 1000 by default for the inference demo. For infinite runs, you can use the saved checkpoints from disk.
         'microbatch': {            # The microbatch scheduler assumes a power law decay schedule for the grad norm, and adjusts the microbatch size (minimum 1) to enforce it.
             'sample_every': 5,     # Sampling grad norm can be a bit expensive, so we do it every n steps instead.
             'scale_lr': 1e-1,      # Microbatch update rate
