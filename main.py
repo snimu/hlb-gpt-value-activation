@@ -24,6 +24,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import pandas as pd
+
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
 
@@ -58,7 +60,7 @@ import tiktoken
 # Model scales other than 1.0 are in alpha currently -- they should run okay, but are almost certainly not tuned efficiently yet! This should hopefully be addressed in a future update.
 model_scale         = 1.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
 max_sequence_length = 1024   # Can go up or down. Mostly tested up to 1024, some models can avoid OOMs even with length 8192 (not really tested)
-gpu_token_capacity  = 114688 # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
+gpu_token_capacity  = int(114688*24/40) # Adapted to an A10 with 24GB VRAM. Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
 
 # Approximates the amount of tokens the GPU can hold based upon the scale of the model (scaled somewhat conservatively to avoid most OOMs. May OOM in some weird edgecases.)
 # Batchsize is determined automatically based upon the current sequence length and the rough token-capacity of the GPU for a given model.
@@ -225,6 +227,64 @@ class LatentAttentionBlock(nn.Module):
         return x
 
 
+class LatentAttentionBlockLinearValue(nn.Module):
+    """ Efficient fused latent-space attention block. Linear keys and queries, linear values."""
+    def __init__(self, num_dim):
+        super().__init__()
+        # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
+        self.dim        = num_dim
+        self.qk_dim     = self.dim//hyp['net']['qk_dim_div']
+        self.v_dim      = num_dim
+        self.expand_dim = num_dim * hyp['net']['expand_factor']
+
+        # Main layer weights
+        self.norm    = nn.LayerNorm(self.dim, bias=False)
+        self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
+        self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
+
+        # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
+        # Has a high lr mult applied to it so that each layer can learn its own attention scale.
+        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda'))
+
+    def forward(self, x):
+        residual = x
+
+        # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
+        attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+
+        # Shared LayerNorm for linear layers and attention
+        x = self.norm(x)
+
+        # Fused into one kernel for memory+speed/etc
+        query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
+
+        # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
+        mult = linear * F.gelu(pre_gelu)
+
+        # Partition between the input values and the v dim values
+        # Note: This is the only difference between this and the previous block (done like this to make it easy to implement)
+        mult, _ = mult.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+        _, value = linear.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+
+        # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
+        attention = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask)
+
+        # Output linear layer
+        out = F.linear(torch.cat([mult, attention], dim=-1), self.project)
+
+        # Add to residual
+        x = residual + out
+
+        return x
+
+
+def get_latent_attention_block(num_dim, linear_value=False):
+    if linear_value:
+        return LatentAttentionBlockLinearValue(num_dim)
+    else:
+        return LatentAttentionBlock(num_dim)
+
+
 #############################################
 #            Network Definition             #
 #############################################
@@ -245,10 +305,10 @@ class SpeedyLangNet(nn.Module):
         return x
 
 
-def make_net():
+def make_net(linear_value=False):
     network_dict = nn.ModuleDict({
         'embedding': nn.Embedding(hyp['misc']['num_tokens'], hyp['net']['residual_depth'], scale_grad_by_freq=True),
-        'attn_layers': nn.ModuleList([LatentAttentionBlock(hyp['net']['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
+        'attn_layers': nn.ModuleList([get_latent_attention_block(hyp['net']['residual_depth'], linear_value) for _ in range(hyp['net']['num_blocks'])]),
         'norm': nn.LayerNorm(hyp['net']['residual_depth'], bias=False),
         'outputs': nn.Linear(hyp['net']['residual_depth'], hyp['misc']['num_tokens'], bias=False),
 })
@@ -406,7 +466,7 @@ def eval(net):
 
     return val_acc.item(), val_loss.item(), val_perplexity.item()
 
-def main():
+def main(linear_value=False):
 
     #################
     #     Init      #
@@ -431,7 +491,7 @@ def main():
     val_loss, val_acc, val_perplexity = None, None, None
 
     # Get network
-    net = make_net()
+    net = make_net(linear_value)
 
     # Get the total number of parameters in our model and use that to generate/calculate the base lr.
     total_trainable_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
@@ -444,6 +504,12 @@ def main():
     print("curr_batchsize:     ", curr_batchsize)
     print("final_batchsize:    ", tokens_per_batch_capacity // hyp['misc']['sequence_length']['max'])
     print("max_sequence_length:", max_sequence_length)
+
+    # I track the train&val loss&acc each
+    train_losses, train_accs, val_losses, val_accs = [], [], [], []
+    train_steps, val_steps = [], []
+    tokens_seen_train, tokens_seen_val = [], []
+    epoch_train, epoch_val = [], []
 
 
     #####################
@@ -505,7 +571,11 @@ def main():
             train_acc          = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss         = loss.detach().cpu().item()
             train_summary_vars = {'epoch': tokens_seen//len(data['train']), 'curr_step': curr_step, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
-
+            train_losses.append(train_loss)
+            train_accs.append(train_acc)
+            train_steps.append(curr_step)
+            tokens_seen_train.append(tokens_seen)
+            epoch_train.append(tokens_seen//len(data['train']))
             print_training_details(format_for_table(variables_to_log, locals=train_summary_vars))
 
 
@@ -560,6 +630,11 @@ def main():
 
                 net.eval()
                 val_acc, val_loss, val_perplexity = eval(net)
+                val_losses.append(val_loss)
+                val_accs.append(val_acc)
+                val_steps.append(curr_step)
+                tokens_seen_val.append(tokens_seen)
+                epoch_val.append(tokens_seen//len(data['train']))
 
                 if (curr_step//hyp['opt']['eval_every']) % hyp['opt']['save_every_n_evals'] == 0:
                     torch.save(net, 'model.pt')
@@ -574,32 +649,52 @@ def main():
                 net.train()
         curr_microbatch_step += 1
 
-    return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
+    return train_losses, train_accs, val_losses, val_accs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
 
 
 if __name__ == "__main__":
-    final_val_loss_list = []
-    for _ in range(1):
-        net, val_loss = main()
-        final_val_loss_list.append(val_loss)
-    print(f"Average final val loss: {sum(final_val_loss_list)/len(final_val_loss_list)}") # TODO add variance as well, later
+    results = {
+        "linear_value": [],
+        "run_number": [],
+        "train_losses": [],
+        "train_accs": [],
+        "val_losses": [],
+        "val_accs": [],
+        "train_steps": [],
+        "val_steps": [],
+        "tokens_seen_train": [],
+        "tokens_seen_val": [],
+        "epoch_train": [],
+        "epoch_val": [],
+    }
+    # Set seed for reproducibility
+    initial_seed = 8949023
+    num_runs = 10
+    for linear_value in [True, False]:
+        seed = initial_seed  # Reset seed for each linear_value to be able to compare results
+        for run_num in range(num_runs):
+            torch.manual_seed(seed)
 
+            print(f"\n\n{linear_value=} ({run_num+1}/{num_runs})\n\n")
 
-########################
-#    Inference Test    #
-########################
-net = torch.load('model.pt')
-
-net.eval()
-demo_sentence = "In 1856, Abraham Lincoln"
-
-tokenizer = tiktoken.get_encoding("gpt2")
-tokenized_demo_sentence = torch.tensor(tokenizer.encode_ordinary(demo_sentence), dtype=torch.int, device='cuda').unsqueeze(0)
-
-import sys; sys.setrecursionlimit(max_sequence_length*2)
-inference = lambda x, length=512, temp=1.: inference(torch.cat((x, torch.multinomial(net(x)[:, -1].div(temp).softmax(-1), 1)), dim=-1), length-1) if length > 0 else x
-
-import textwrap
-with torch.no_grad():
-    print("\nprompt: \n", textwrap.fill(tokenizer.decode(tokenized_demo_sentence.squeeze().cpu().numpy()), 80,  replace_whitespace=False))
-    print("decoded result: \n", textwrap.fill(tokenizer.decode(inference(tokenized_demo_sentence).squeeze().cpu().numpy()), 80,  replace_whitespace=False))
+            (
+                train_losses, train_accs, val_losses, val_accs, 
+                train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+                epoch_train, epoch_val,
+            ) = main(linear_value=False)
+            results["linear_value"].append(linear_value)
+            results["run_number"].append(run_num+1)
+            results["train_losses"].append(str(train_losses))
+            results["train_accs"].append(str(train_accs))
+            results["val_losses"].append(str(val_losses))
+            results["val_accs"].append(str(val_accs))
+            results["train_steps"].append(str(train_steps))
+            results["val_steps"].append(str(val_steps))
+            results["tokens_seen_train"].append(str(tokens_seen_train))
+            results["tokens_seen_val"].append(str(tokens_seen_val))
+            results["epoch_train"].append(str(epoch_train))
+            results["epoch_val"].append(str(epoch_val))
+            
+            seed += 1  # Increment seed for next run
+    
+    pd.DataFrame(results).to_csv("results.csv", index=False)
