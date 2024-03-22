@@ -671,19 +671,19 @@ if __name__ == "__main__":
                 epoch_train, epoch_val,
             ) = main(linear_value=False)
             results = {
-                "linear_value": linear_value,
-                "run_number": run_num+1,
-                "train_losses": str(train_losses),
-                "train_accs": str(train_accs),
-                "val_losses": str(val_losses),
-                "val_accs": str(val_accs),
-                "val_pplxs": str(val_pplxs),
-                "train_steps": str(train_steps),
-                "val_steps": str(val_steps),
-                "tokens_seen_train": str(tokens_seen_train),
-                "tokens_seen_val": str(tokens_seen_val),
-                "epoch_train": str(epoch_train),
-                "epoch_val": str(epoch_val),
+                "linear_value": [linear_value],
+                "run_number": [run_num+1],
+                "train_losses": [str(train_losses)],
+                "train_accs": [str(train_accs)],
+                "val_losses": [str(val_losses)],
+                "val_accs": [str(val_accs)],
+                "val_pplxs": [str(val_pplxs)],
+                "train_steps": [str(train_steps)],
+                "val_steps": [str(val_steps)],
+                "tokens_seen_train": [str(tokens_seen_train)],
+                "tokens_seen_val": [str(tokens_seen_val)],
+                "epoch_train": [str(epoch_train)],
+                "epoch_val": [str(epoch_val)],
             }
             if run_num == 0 and linear_value:
                 pd.DataFrame(results).to_csv("results.csv", index=False)
