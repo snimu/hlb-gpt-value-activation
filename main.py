@@ -409,7 +409,7 @@ def grow_sequence_length(old_length, old_batchsize):
 #          Logging           #
 ##############################
 
-variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_seconds']
+variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_secs']
 # define the printing function and print the column heads
 def print_training_details(columns_list, separator_left='  ', separator_right='  |', column_labels_only=False, is_final_entry=False):
     output_line = "|" # start with the left bar
@@ -472,7 +472,7 @@ def main(linear_value=False):
     #     Init      #
     #################
     # Full-run statistics variables
-    total_seconds        = 0.
+    total_secs        = 0.
     curr_microbatch_step = curr_step = 0
     tokens_seen          = 0
 
@@ -626,7 +626,7 @@ def main(linear_value=False):
                 ender.record()
                 torch.cuda.synchronize()
 
-                total_seconds += 1e-3 * starter.elapsed_time(ender)
+                total_secs += 1e-3 * starter.elapsed_time(ender)
                 train_loss = loss.detach().cpu().item() # Update the loss for the training details printout
 
                 net.eval()
