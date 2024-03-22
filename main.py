@@ -655,21 +655,6 @@ def main(linear_value=False):
 
 
 if __name__ == "__main__":
-    results = {
-        "linear_value": [],
-        "run_number": [],
-        "train_losses": [],
-        "train_accs": [],
-        "val_losses": [],
-        "val_accs": [],
-        "val_pplxs": [],
-        "train_steps": [],
-        "val_steps": [],
-        "tokens_seen_train": [],
-        "tokens_seen_val": [],
-        "epoch_train": [],
-        "epoch_val": [],
-    }
     # Set seed for reproducibility
     initial_seed = 8949023
     num_runs = 10
@@ -685,20 +670,25 @@ if __name__ == "__main__":
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val,
             ) = main(linear_value=False)
-            results["linear_value"].append(linear_value)
-            results["run_number"].append(run_num+1)
-            results["train_losses"].append(str(train_losses))
-            results["train_accs"].append(str(train_accs))
-            results["val_losses"].append(str(val_losses))
-            results["val_accs"].append(str(val_accs))
-            results["val_pplxs"].append(str(val_pplxs))
-            results["train_steps"].append(str(train_steps))
-            results["val_steps"].append(str(val_steps))
-            results["tokens_seen_train"].append(str(tokens_seen_train))
-            results["tokens_seen_val"].append(str(tokens_seen_val))
-            results["epoch_train"].append(str(epoch_train))
-            results["epoch_val"].append(str(epoch_val))
+            results = {
+                "linear_value": linear_value,
+                "run_number": run_num+1,
+                "train_losses": str(train_losses),
+                "train_accs": str(train_accs),
+                "val_losses": str(val_losses),
+                "val_accs": str(val_accs),
+                "val_pplxs": str(val_pplxs),
+                "train_steps": str(train_steps),
+                "val_steps": str(val_steps),
+                "tokens_seen_train": str(tokens_seen_train),
+                "tokens_seen_val": str(tokens_seen_val),
+                "epoch_train": str(epoch_train),
+                "epoch_val": str(epoch_val),
+            }
+            if run_num == 0 and linear_value:
+                pd.DataFrame(results).to_csv("results.csv", index=False)
+            else:
+                with open("results.csv", "a") as f:
+                    pd.DataFrame(results).to_csv(f, index=False, header=False)
             
             seed += 1  # Increment seed for next run
-    
-    pd.DataFrame(results).to_csv("results.csv", index=False)
