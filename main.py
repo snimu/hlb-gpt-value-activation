@@ -58,7 +58,7 @@ import tiktoken
 
 # This parameter determines the final size of the model. Roughly, num_model_params ~= model_scale * 49 M (# of params in the base model), but it scales nonlinearly. (#TODO is to make this more straight in the future)
 # Model scales other than 1.0 are in alpha currently -- they should run okay, but are almost certainly not tuned efficiently yet! This should hopefully be addressed in a future update.
-model_scale         = 1.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
+model_scale         = 5.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
 max_sequence_length = 1024   # Can go up or down. Mostly tested up to 1024, some models can avoid OOMs even with length 8192 (not really tested)
 # gpu_token_capacity  = int(114688*20/40) # Adapted to an A10 with 24GB VRAM (with some memory slack). Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
 gpu_token_capacity  = int(114688) # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
@@ -670,7 +670,7 @@ def main(linear_value=False):
 
 if __name__ == "__main__":
     # Set seed for reproducibility
-    initial_seed = 8949023
+    initial_seed = 100
     num_runs = 25
     for linear_value in [True, False]:
         seed = initial_seed  # Reset seed for each linear_value to be able to compare results
