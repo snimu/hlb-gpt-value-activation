@@ -1,6 +1,7 @@
 """Plot the results"""
 
 import ast
+import os
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,7 @@ def close_plot():
     plt.close()
 
 
-def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True):
+def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True, subdir: str = "40Mparams"):
     legal_values = ["val_pplxs", "val_accs", "val_losses", "train_accs", "train_losses"]
     assert metric in legal_values, f"The metric must be one of {legal_values}"
 
@@ -56,29 +57,29 @@ def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True)
     if show:
         plt.show()
     else:
-        plt.savefig(f"results/{metric}.png", dpi=300)
+        plt.savefig(f"results/{subdir}/{metric}.png", dpi=300)
     
     close_plot()
 
 
-def plot_metrics(df: pd.DataFrame, show: bool = True, plot_all: bool = True):
+def plot_metrics(df: pd.DataFrame, show: bool = True, plot_all: bool = True, subdir: str = "40Mparams"):
     # Plot the validation perplexities
-    plot_metric_over_step(df, 'val_pplxs', plot_all=plot_all, show=show)
+    plot_metric_over_step(df, 'val_pplxs', plot_all=plot_all, show=show, subdir=subdir)
     
     # Plot the validation accuracies
-    plot_metric_over_step(df, 'val_accs', plot_all=plot_all, show=show)
+    plot_metric_over_step(df, 'val_accs', plot_all=plot_all, show=show, subdir=subdir)
     
     # Plot the validation losses
-    plot_metric_over_step(df, 'val_losses', plot_all=plot_all, show=show)
+    plot_metric_over_step(df, 'val_losses', plot_all=plot_all, show=show, subdir=subdir)
     
     # Plot the training accuracies
-    plot_metric_over_step(df, 'train_accs', plot_all=plot_all, show=show)
+    plot_metric_over_step(df, 'train_accs', plot_all=plot_all, show=show, subdir=subdir)
     
     # Plot the training losses
-    plot_metric_over_step(df, 'train_losses', plot_all=plot_all, show=show)
+    plot_metric_over_step(df, 'train_losses', plot_all=plot_all, show=show, subdir=subdir)
 
 
-def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False):
+def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False, show: bool = True, subdir: str = "40Mparams"):
     """An eventplot of the tokens seen over the different run_number between linear and non-linear value.
     Where the tokens seen is the final entry in tokens_seen_train or tokens_seen_val, depending on the train argument.
     """
@@ -106,11 +107,19 @@ def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False):
     plt.ylabel("tokens seen")
     plt.grid()
     plt.tight_layout()
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.savefig(
+            f"results/{subdir}/tokens_seen_train.png" 
+            if train 
+            else f"results/{subdir}tokens_seen_val.png", 
+            dpi=300
+        )
     close_plot()
 
 
-def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
+def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str, show: bool = True, subdir: str = "40Mparams"):
     df_lin = df[df["linear_value"]]
     df_nonlin = df[~df["linear_value"]]
 
@@ -129,11 +138,14 @@ def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
     plt.grid()
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.savefig(f"results/{subdir}/final_{metric}_over_final_time_taken.png", dpi=300)
     close_plot()
 
 
-def plot_grad_norms(df: pd.DataFrame): 
+def plot_grad_norms(df: pd.DataFrame, show: bool = True, subdir: str = "40Mparams"): 
     df_lin = df[df["linear_value"]]
     df_nonlin = df[~df["linear_value"]]
 
@@ -154,21 +166,30 @@ def plot_grad_norms(df: pd.DataFrame):
     plt.grid()
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.savefig(f"results/{subdir}/grad_norms.png", dpi=300)
     close_plot()
 
 
 def main():
+    subdir = "40Mparams"
+    os.makedirs(f"results/{subdir}", exist_ok=True)
     df = pd.read_csv("results/results_25_tries_1000_steps_40Mparams.csv")
-    plot_metrics(df)
-    plot_spread_of_tokens_seen(df)
-    plot_final_metric_over_final_time_taken(df, "val_pplxs")
+    plot_metrics(df, show=False, subdir=subdir)
+    plot_spread_of_tokens_seen(df, train=True, show=False, subdir=subdir)
+    plot_spread_of_tokens_seen(df, train=False, show=False, subdir=subdir)
+    plot_final_metric_over_final_time_taken(df, "val_pplxs", show=False, subdir=subdir)
 
+    subdir = "240Mparams"
+    os.makedirs(f"results/{subdir}", exist_ok=True)
     df = pd.read_csv("results/results_5_tries_1000_steps_240Mparams.csv")
-    plot_metrics(df)
-    plot_spread_of_tokens_seen(df)
-    plot_final_metric_over_final_time_taken(df, "val_pplxs")
-    plot_grad_norms(df)
+    plot_metrics(df, show=False, subdir=subdir)
+    plot_spread_of_tokens_seen(df, train=True, show=False, subdir=subdir)
+    plot_spread_of_tokens_seen(df, train=False, show=False, subdir=subdir)
+    plot_final_metric_over_final_time_taken(df, "val_pplxs", show=False, subdir=subdir)
+    plot_grad_norms(df, show=False, subdir=subdir)
 
 
 if __name__ == "__main__":
