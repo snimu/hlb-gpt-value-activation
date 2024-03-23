@@ -512,6 +512,7 @@ def main(linear_value=False):
     train_steps, val_steps = [], []
     tokens_seen_train, tokens_seen_val = [], []
     epoch_train, epoch_val = [], []
+    cumulative_time_taken = []
 
 
     #####################
@@ -638,6 +639,7 @@ def main(linear_value=False):
                 val_steps.append(curr_step)
                 tokens_seen_val.append(tokens_seen)
                 epoch_val.append(tokens_seen//len(data['train']))
+                cumulative_time_taken.append(total_secs) 
 
                 if (curr_step//hyp['opt']['eval_every']) % hyp['opt']['save_every_n_evals'] == 0:
                     torch.save(net, 'model.pt')
@@ -652,7 +654,7 @@ def main(linear_value=False):
                 net.train()
         curr_microbatch_step += 1
 
-    return net, train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val
+    return net, train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val, cumulative_time_taken
 
 
 if __name__ == "__main__":
@@ -670,7 +672,7 @@ if __name__ == "__main__":
                 net,
                 train_losses, train_accs, val_losses, val_accs, val_pplxs,
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
-                epoch_train, epoch_val,
+                epoch_train, epoch_val, cumulative_time_taken,
             ) = main(linear_value=linear_value)
             del net  # Actively delete the network to free up memory
             results = {
@@ -687,6 +689,7 @@ if __name__ == "__main__":
                 "tokens_seen_val": [str(tokens_seen_val)],
                 "epoch_train": [str(epoch_train)],
                 "epoch_val": [str(epoch_val)],
+                "cumulative_time_taken": [str(cumulative_time_taken)],
                 "seed": [seed],
             }
             if run_num == 0 and linear_value:
