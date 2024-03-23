@@ -57,9 +57,7 @@ def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True)
     plt.close()
 
 
-if __name__ == "__main__":
-    # Load the data
-    df = pd.read_csv("results/results.csv")
+def plot_metrics(df: pd.DataFrame):
     show = False
     plot_all = True
     
@@ -78,3 +76,44 @@ if __name__ == "__main__":
     # Plot the training losses
     plot_metric_over_step(df, 'train_losses', plot_all=plot_all, show=show)
 
+
+def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False):
+    """An eventplot of the tokens seen over the different run_number between linear and non-linear value.
+    Where the tokens seen is the final entry in tokens_seen_train or tokens_seen_val, depending on the train argument.
+    """
+    df_lin = df[df["linear_value"]]
+    df_nonlin = df[~df["linear_value"]]
+
+    tokens_lin = []
+    tokens_nonlin = []
+
+    for row in df_lin["tokens_seen_train" if train else "tokens_seen_val"]:
+        tokens_lin.append(ast.literal_eval(row)[-1])
+    for row in df_nonlin["tokens_seen_train" if train else "tokens_seen_val"]:
+        tokens_nonlin.append(ast.literal_eval(row)[-1])
+
+    tokens_lin = np.array(tokens_lin)
+    tokens_nonlin = np.array(tokens_nonlin)
+    all_tokens = np.vstack([tokens_lin, tokens_nonlin])
+
+    fig, ax = plt.subplots()
+    ax.eventplot(all_tokens, colors=["blue", "orange"], lineoffsets=[0, 1], linelengths=0.8, orientation="vertical")
+    ax.legend(["linear", "nonlinear"])
+    ax.set_xticklabels([])
+
+    plt.title("Tokens seen: linear (left) vs nonlinear (right) value")
+    plt.ylabel("tokens seen")
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+
+def main():
+    df = pd.read_csv("results/results.csv")
+    # plot_metrics(df)
+    plot_spread_of_tokens_seen(df)
+
+
+
+if __name__ == "__main__":
+    main()
