@@ -513,6 +513,9 @@ def main(linear_value=False):
     tokens_seen_train, tokens_seen_val = [], []
     epoch_train, epoch_val = [], []
     cumulative_time_taken = []
+    grad_norms = []
+    grad_norm_steps = []
+    grad_norm_tokens = []
 
 
     #####################
@@ -600,6 +603,9 @@ def main(linear_value=False):
             # There could be improvements or losses in changing the dithering strategy, since determinism and gradient descent can lead to some very not-so-nice (and subtle) loss oscillations.
             if curr_step % hyp['opt']['microbatch']['sample_every'] == 0:
                 grad_norm = get_grad_norm(net)
+                grad_norms.append(grad_norm)
+                grad_norm_steps.append(curr_step)
+                grad_norm_tokens.append(tokens_seen)
 
                 grad_norm_per_param = grad_norm/(total_trainable_params**.5) # This should keep the expected grad norm per parameter roughly the same (ignoring initializations) unless I did my napkin math wrong (feel free to correct it and test it out if so! <3 :') )
                 grad_norm_target    = (((microbatch_grad_norm_steps_scale * (curr_step + 1e-2))) ** microbatch_expected_grad_norm_pow)
@@ -654,7 +660,12 @@ def main(linear_value=False):
                 net.train()
         curr_microbatch_step += 1
 
-    return net, train_losses, train_accs, val_losses, val_accs, val_pplxs, train_steps, val_steps, tokens_seen_train, tokens_seen_val, epoch_train, epoch_val, cumulative_time_taken
+    return (
+        net, train_losses, train_accs, val_losses, val_accs, val_pplxs, 
+        train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+        epoch_train, epoch_val, cumulative_time_taken,
+        grad_norms, grad_norm_steps, grad_norm_tokens,
+    )
 
 
 if __name__ == "__main__":
@@ -673,6 +684,7 @@ if __name__ == "__main__":
                 train_losses, train_accs, val_losses, val_accs, val_pplxs,
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val, cumulative_time_taken,
+                grad_norms, grad_norm_steps, grad_norm_tokens,
             ) = main(linear_value=linear_value)
             del net  # Actively delete the network to free up memory
             results = {
@@ -690,6 +702,9 @@ if __name__ == "__main__":
                 "epoch_train": [str(epoch_train)],
                 "epoch_val": [str(epoch_val)],
                 "cumulative_time_taken": [str(cumulative_time_taken)],
+                "grad_norms": [str(grad_norms)],
+                "grad_norm_steps": [str(grad_norm_steps)],
+                "grad_norm_tokens": [str(grad_norm_tokens)],
                 "seed": [seed],
             }
             if run_num == 0 and linear_value:
