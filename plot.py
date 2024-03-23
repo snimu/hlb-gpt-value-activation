@@ -133,11 +133,42 @@ def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
     close_plot()
 
 
+def plot_grad_norms(df: pd.DataFrame): 
+    df_lin = df[df["linear_value"]]
+    df_nonlin = df[~df["linear_value"]]
+
+    grad_norms_lin = df_lin["grad_norms"].apply(lambda x: np.array(ast.literal_eval(x)))
+    grad_norms_nonlin = df_nonlin["grad_norms"].apply(lambda x: np.array(ast.literal_eval(x)))
+
+    avg_grad_norms_lin = np.mean(grad_norms_lin, axis=0)
+    avg_grad_norms_nonlin = np.mean(grad_norms_nonlin, axis=0)
+
+    steps = np.array(ast.literal_eval(df_lin["grad_norm_steps"].iloc[0]))
+
+    plt.plot(steps, avg_grad_norms_lin, label="linear", color="blue", linewidth=2)
+    plt.plot(steps, avg_grad_norms_nonlin, label="nonlinear", color="orange", linewidth=2)
+
+    plt.title("Gradient norms: linear vs nonlinear value, averaged over runs")
+    plt.xlabel("step")
+    plt.ylabel("gradient norm")
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+    close_plot()
+
+
 def main():
     df = pd.read_csv("results/results_25_tries_1000_steps_40Mparams.csv")
     plot_metrics(df)
     plot_spread_of_tokens_seen(df)
     plot_final_metric_over_final_time_taken(df, "val_pplxs")
+
+    df = pd.read_csv("results/results_5_tries_1000_steps_240Mparams.csv")
+    plot_metrics(df)
+    plot_spread_of_tokens_seen(df)
+    plot_final_metric_over_final_time_taken(df, "val_pplxs")
+    plot_grad_norms(df)
 
 
 if __name__ == "__main__":
