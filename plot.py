@@ -108,11 +108,33 @@ def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False):
     plt.show()
 
 
+def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
+    df_lin = df[df["linear_value"]]
+    df_nonlin = df[~df["linear_value"]]
+
+    final_metric_lin = df_lin[metric].apply(lambda x: ast.literal_eval(x)[-1])
+    final_metric_nonlin = df_nonlin[metric].apply(lambda x: ast.literal_eval(x)[-1])
+    final_times_lin = df_lin["cumulative_time_taken"].apply(lambda x: ast.literal_eval(x)[-1])
+    final_times_nonlin = df_nonlin["cumulative_time_taken"].apply(lambda x: ast.literal_eval(x)[-1])
+
+    plt.scatter(final_times_lin, final_metric_lin, color="blue", label="linear")
+    plt.scatter(final_times_nonlin, final_metric_nonlin, color="orange", label="nonlinear")
+
+    plt.title(f"Final {metric} over final time taken: linear vs nonlinear value")
+    plt.xlabel("final time taken (seconds)")
+    plt.ylabel(metric)
+
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
-    df = pd.read_csv("results/results.csv")
+    df = pd.read_csv("results/results_25_tries_1000_steps_40Mparams.csv")
     # plot_metrics(df)
     plot_spread_of_tokens_seen(df)
-
+    plot_final_metric_over_final_time_taken(df, "val_pplxs")
 
 
 if __name__ == "__main__":
