@@ -7,6 +7,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
+def close_plot():
+    plt.cla()
+    plt.clf()
+    plt.close()
+
+
 def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True):
     legal_values = ["val_pplxs", "val_accs", "val_losses", "train_accs", "train_losses"]
     assert metric in legal_values, f"The metric must be one of {legal_values}"
@@ -52,15 +58,10 @@ def plot_metric_over_step(df, metric, plot_all: bool = False, show: bool = True)
     else:
         plt.savefig(f"results/{metric}.png", dpi=300)
     
-    plt.cla()
-    plt.clf()
-    plt.close()
+    close_plot()
 
 
-def plot_metrics(df: pd.DataFrame):
-    show = False
-    plot_all = True
-    
+def plot_metrics(df: pd.DataFrame, show: bool = True, plot_all: bool = True):
     # Plot the validation perplexities
     plot_metric_over_step(df, 'val_pplxs', plot_all=plot_all, show=show)
     
@@ -106,6 +107,7 @@ def plot_spread_of_tokens_seen(df: pd.DataFrame, train: bool = False):
     plt.grid()
     plt.tight_layout()
     plt.show()
+    close_plot()
 
 
 def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
@@ -128,11 +130,12 @@ def plot_final_metric_over_final_time_taken(df: pd.DataFrame, metric: str):
     plt.legend()
     plt.tight_layout()
     plt.show()
+    close_plot()
 
 
 def main():
     df = pd.read_csv("results/results_25_tries_1000_steps_40Mparams.csv")
-    # plot_metrics(df)
+    plot_metrics(df)
     plot_spread_of_tokens_seen(df)
     plot_final_metric_over_final_time_taken(df, "val_pplxs")
 
