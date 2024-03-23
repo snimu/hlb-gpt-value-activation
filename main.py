@@ -660,7 +660,7 @@ def main(linear_value=False):
 if __name__ == "__main__":
     # Set seed for reproducibility
     initial_seed = 8949023
-    num_runs = 50
+    num_runs = 25
     for linear_value in [True, False]:
         seed = initial_seed  # Reset seed for each linear_value to be able to compare results
         for run_num in range(num_runs):
