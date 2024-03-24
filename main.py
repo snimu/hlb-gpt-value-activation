@@ -778,19 +778,25 @@ def get_args() -> argparse.Namespace:
 
 def test_value_activation_functions():
     args = get_args()
+    setting_num = 0
+    run_number_global = 0
     for activation_name in args.activation:
         if activation_name not in activation_name_to_function:
             raise ValueError(f"Invalid activation function: {activation_name}")
         activation_function = activation_name_to_function[activation_name]
 
         for retain_distribution in args.retain_distribution:
+            setting_num += 1
             if retain_distribution:
                 activation_function = keep_mean_and_std(activation_function)
 
             for run_num in range(args.num_runs):
-                setting_str = f"{activation_name}{'_mean_std' if retain_distribution else ''}"
-                setting_str += f" ({run_num+1}/{args.num_runs})"
-                dashes = ":" * len(setting_str)
+                run_number_global += 1
+                setting_str = f"{activation_name}{'_mean_std' if retain_distribution else ''}\n"
+                setting_str += f"Training num {run_number_global}/{len(args.activation)*len(args.retain_distribution)*args.num_runs} "
+                setting_str += f"(setting {setting_num}/{len(args.activation)*len(args.retain_distribution)}, "
+                setting_str += f"run {run_num+1}/{args.num_runs})\n "
+                dashes = ":" * max(len(s) for s in setting_str.split("\n"))
                 print(f"\n\n{dashes}\n{setting_str}\n{dashes}\n")
                 torch.manual_seed(args.seed+run_num)
                 (
