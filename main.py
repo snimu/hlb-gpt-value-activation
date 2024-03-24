@@ -824,6 +824,9 @@ def test_value_activation_functions():
                         pd.DataFrame(results).to_csv(f, index=False, header=False)
 
 
+if __name__ == "__main__":
+    test_value_activation_functions()
+
 
 def test_linear_vs_non_linear_value_old_dont_call():
     raise NotImplementedError("This function is not up to date and should not be called.")
