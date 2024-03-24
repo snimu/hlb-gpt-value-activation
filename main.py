@@ -758,13 +758,17 @@ def get_args() -> argparse.Namespace:
         help="Activation function to use",
     )
     parser.add_argument("--num_runs", type=int, default=5, help="Number of runs to perform")
-    parser.add_argument("--retain_distribution", action="store_true", help="Retain the mean and standard deviation of the input tensor after applying the activation function")
+    parser.add_argument("--retain_distribution", type=int, default=0, choices=[0, 1], nargs="+", help="Retain the mean and standard deviation of the input tensor after applying the activation function")
     parser.add_argument("--savefile", type=str, default="results.csv", help="File to save the results to")
     parser.add_argument("--seed", type=int, default=100, help="Seed for reproducibility. Actual seed will be seed + run_number")
     args = parser.parse_args()
     args.activation = [args.activation] if isinstance(args.activation, str) else args.activation
     if "all" in args.activation:
         args.activation = list(activation_name_to_function.keys())
+    if isinstance(args.retain_distribution, int):
+        args.retain_distribution = [args.retain_distribution]
+    args.retain_distribution = list(set(args.retain_distribution))
+    args.retain_distribution = [bool(x) for x in args.retain_distribution]
     return args
 
 
@@ -774,49 +778,50 @@ def test_value_activation_functions():
         if activation_name not in activation_name_to_function:
             raise ValueError(f"Invalid activation function: {activation_name}")
         activation_function = activation_name_to_function[activation_name]
-        if args.retain_distribution:
-            activation_function = keep_mean_and_std(activation_function)
-            activation_name = f"{activation_name}_mean_std"
-        
-        setting_str = f"{activation_name}{'_mean_std' if args.retain_distribution else ''}"
-        dashes = "-" * len(setting_str)
 
-        for run_num in range(args.num_runs):
-            print(f"\n\n{dashes}\n{setting_str} ({run_num+1}/{args.num_runs})\n{dashes}\n")
-            torch.manual_seed(args.seed+run_num)
-            (
-                net,
-                train_losses, train_accs, val_losses, val_accs, val_pplxs,
-                train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
-                epoch_train, epoch_val, cumulative_time_taken,
-                grad_norms, grad_norm_steps, grad_norm_tokens,
-            ) = main(linear_value=False)
-            del net
-            results = {
-                "activation": [activation_name],
-                "run_number": [run_num+1],
-                "train_losses": [str(train_losses)],
-                "train_accs": [str(train_accs)],
-                "val_losses": [str(val_losses)],
-                "val_accs": [str(val_accs)],
-                "val_pplxs": [str(val_pplxs)],
-                "train_steps": [str(train_steps)],
-                "val_steps": [str(val_steps)],
-                "tokens_seen_train": [str(tokens_seen_train)],
-                "tokens_seen_val": [str(tokens_seen_val)],
-                "epoch_train": [str(epoch_train)],
-                "epoch_val": [str(epoch_val)],
-                "cumulative_time_taken": [str(cumulative_time_taken)],
-                "grad_norms": [str(grad_norms)],
-                "grad_norm_steps": [str(grad_norm_steps)],
-                "grad_norm_tokens": [str(grad_norm_tokens)],
-                "seed": [args.seed+run_num],
-            }
-            if run_num == 0 and activation_name == args.activation[0]:
-                pd.DataFrame(results).to_csv(args.savefile, index=False)
-            else:
-                with open(args.savefile, "a") as f:
-                    pd.DataFrame(results).to_csv(f, index=False, header=False)
+        for retain_distribution in args.retain_distribution:
+            if retain_distribution:
+                activation_function = keep_mean_and_std(activation_function)
+
+            for run_num in range(args.num_runs):
+                setting_str = f"{activation_name}{'_mean_std' if retain_distribution else ''}"
+                dashes = "-" * len(setting_str)
+                print(f"\n\n{dashes}\n{setting_str} ({run_num+1}/{args.num_runs})\n{dashes}\n")
+                torch.manual_seed(args.seed+run_num)
+                (
+                    net,
+                    train_losses, train_accs, val_losses, val_accs, val_pplxs,
+                    train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+                    epoch_train, epoch_val, cumulative_time_taken,
+                    grad_norms, grad_norm_steps, grad_norm_tokens,
+                ) = main(linear_value=False)
+                del net
+                results = {
+                    "activation": [activation_name],
+                    "retain_distribution": [retain_distribution],
+                    "run_number": [run_num+1],
+                    "train_losses": [str(train_losses)],
+                    "train_accs": [str(train_accs)],
+                    "val_losses": [str(val_losses)],
+                    "val_accs": [str(val_accs)],
+                    "val_pplxs": [str(val_pplxs)],
+                    "train_steps": [str(train_steps)],
+                    "val_steps": [str(val_steps)],
+                    "tokens_seen_train": [str(tokens_seen_train)],
+                    "tokens_seen_val": [str(tokens_seen_val)],
+                    "epoch_train": [str(epoch_train)],
+                    "epoch_val": [str(epoch_val)],
+                    "cumulative_time_taken": [str(cumulative_time_taken)],
+                    "grad_norms": [str(grad_norms)],
+                    "grad_norm_steps": [str(grad_norm_steps)],
+                    "grad_norm_tokens": [str(grad_norm_tokens)],
+                    "seed": [args.seed+run_num],
+                }
+                if run_num == 0 and activation_name == args.activation[0]:
+                    pd.DataFrame(results).to_csv(args.savefile, index=False)
+                else:
+                    with open(args.savefile, "a") as f:
+                        pd.DataFrame(results).to_csv(f, index=False, header=False)
 
 
 
