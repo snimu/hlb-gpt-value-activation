@@ -697,8 +697,8 @@ def main(value_activation):
                 epoch_val.append(tokens_seen//len(data['train']))
                 cumulative_time_taken.append(total_secs) 
 
-                if (curr_step//hyp['opt']['eval_every']) % hyp['opt']['save_every_n_evals'] == 0:
-                    torch.save(net, 'model.pt')
+                # if (curr_step//hyp['opt']['eval_every']) % hyp['opt']['save_every_n_evals'] == 0:
+                #     torch.save(net, 'model.pt')
 
                 # Print out our training details
                 ## We also check to see if we're on our final eval loop (assum that max_curr_step lines up with the eval_every value) so we can print the 'bottom' of the table for each round.
