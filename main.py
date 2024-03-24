@@ -517,7 +517,7 @@ def eval(net):
 
     return val_acc.item(), val_loss.item(), val_perplexity.item()
 
-def main(linear_value=False):
+def main(value_activation):
 
     #################
     #     Init      #
@@ -542,7 +542,7 @@ def main(linear_value=False):
     val_loss, val_acc, val_pplx = None, None, None
 
     # Get network
-    net = make_net(linear_value)
+    net = make_net(value_activation)
 
     # Get the total number of parameters in our model and use that to generate/calculate the base lr.
     total_trainable_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
@@ -794,7 +794,7 @@ def test_value_activation_functions():
                     train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                     epoch_train, epoch_val, cumulative_time_taken,
                     grad_norms, grad_norm_steps, grad_norm_tokens,
-                ) = main(linear_value=False)
+                ) = main(value_activation=activation_function)
                 del net
                 results = {
                     "activation": [activation_name],
