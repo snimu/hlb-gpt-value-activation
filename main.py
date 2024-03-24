@@ -785,8 +785,9 @@ def test_value_activation_functions():
 
             for run_num in range(args.num_runs):
                 setting_str = f"{activation_name}{'_mean_std' if retain_distribution else ''}"
-                dashes = "-" * len(setting_str)
-                print(f"\n\n{dashes}\n{setting_str} ({run_num+1}/{args.num_runs})\n{dashes}\n")
+                setting_str += f" ({run_num+1}/{args.num_runs})"
+                dashes = ":" * len(setting_str)
+                print(f"\n\n{dashes}\n{setting_str}\n{dashes}\n")
                 torch.manual_seed(args.seed+run_num)
                 (
                     net,
