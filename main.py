@@ -12,9 +12,10 @@ try:
 except NameError:
   pass ## we're still good
 """
-import functools
-from functools import partial
+import argparse
+from functools import partial, wraps
 import subprocess
+from typing import Callable
 
 import zipfile
 import math
@@ -58,10 +59,10 @@ import tiktoken
 
 # This parameter determines the final size of the model. Roughly, num_model_params ~= model_scale * 49 M (# of params in the base model), but it scales nonlinearly. (#TODO is to make this more straight in the future)
 # Model scales other than 1.0 are in alpha currently -- they should run okay, but are almost certainly not tuned efficiently yet! This should hopefully be addressed in a future update.
-model_scale         = 5.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
+model_scale         = 1.0    # OOM-tested from ~.5ish (28 M) to 148 (~3 B). Sets the model size. One of the most important hyperparameters. Supports noninteger values (2.3, etc)
 max_sequence_length = 1024   # Can go up or down. Mostly tested up to 1024, some models can avoid OOMs even with length 8192 (not really tested)
-# gpu_token_capacity  = int(114688*20/40) # Adapted to an A10 with 24GB VRAM (with some memory slack). Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
-gpu_token_capacity  = int(114688) # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
+gpu_token_capacity  = int(114688*20/40) # Adapted to an A10 with 24GB VRAM (with some memory slack). Origninal comment: # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
+# gpu_token_capacity  = int(114688) # This is an amount that doesn't OOM on A100 at model_scale 1, length 1024. May need to change if you have a different GPU. Note: Hyperparameter tunings are currently based on the 40 GB limit of the A100.
 
 # Approximates the amount of tokens the GPU can hold based upon the scale of the model (scaled somewhat conservatively to avoid most OOMs. May OOM in some weird edgecases.)
 # Batchsize is determined automatically based upon the current sequence length and the rough token-capacity of the GPU for a given model.
@@ -279,11 +280,60 @@ class LatentAttentionBlockLinearValue(nn.Module):
         return x
 
 
-def get_latent_attention_block(num_dim, linear_value=False):
-    if linear_value:
-        return LatentAttentionBlockLinearValue(num_dim)
-    else:
-        return LatentAttentionBlock(num_dim)
+class LatentAttentionBlockActivatedValue(nn.Module):
+    """ Efficient fused latent-space attention block. Linear keys and queries, arbitrarily activated values."""
+    def __init__(self, num_dim, value_activation):
+        super().__init__()
+        # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
+        self.dim        = num_dim
+        self.qk_dim     = self.dim//hyp['net']['qk_dim_div']
+        self.v_dim      = num_dim
+        self.expand_dim = num_dim * hyp['net']['expand_factor']
+
+        # Main layer weights
+        self.norm    = nn.LayerNorm(self.dim, bias=False)
+        self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
+        self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
+
+        # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
+        # Has a high lr mult applied to it so that each layer can learn its own attention scale.
+        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda'))
+
+        self.value_activation = value_activation
+
+    def forward(self, x):
+        residual = x
+
+        # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
+        attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+
+        # Shared LayerNorm for linear layers and attention
+        x = self.norm(x)
+
+        # Fused into one kernel for memory+speed/etc
+        query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
+
+        # Arbitrary activation function for the value
+        _, value = linear.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+        value = self.value_activation(value)
+
+        # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
+        mult = linear * F.gelu(pre_gelu)
+
+        # Partition between the input values and the v dim values
+        # Note: This is the only difference between this and the previous block (done like this to make it easy to implement)
+        mult, _ = mult.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+
+        # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
+        attention = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask)
+
+        # Output linear layer
+        out = F.linear(torch.cat([mult, attention], dim=-1), self.project)
+
+        # Add to residual
+        x = residual + out
+
+        return x
 
 
 #############################################
@@ -306,10 +356,10 @@ class SpeedyLangNet(nn.Module):
         return x
 
 
-def make_net(linear_value=False):
+def make_net(value_activation: Callable):
     network_dict = nn.ModuleDict({
         'embedding': nn.Embedding(hyp['misc']['num_tokens'], hyp['net']['residual_depth'], scale_grad_by_freq=True),
-        'attn_layers': nn.ModuleList([get_latent_attention_block(hyp['net']['residual_depth'], linear_value) for _ in range(hyp['net']['num_blocks'])]),
+        'attn_layers': nn.ModuleList([LatentAttentionBlockActivatedValue(hyp['net']['residual_depth'], value_activation) for _ in range(hyp['net']['num_blocks'])]),
         'norm': nn.LayerNorm(hyp['net']['residual_depth'], bias=False),
         'outputs': nn.Linear(hyp['net']['residual_depth'], hyp['misc']['num_tokens'], bias=False),
 })
@@ -668,7 +718,110 @@ def main(linear_value=False):
     )
 
 
-if __name__ == "__main__":
+activation_name_to_function = {
+    "identity": lambda x: x,
+    "sigmoid": F.sigmoid,
+    "tanh": F.tanh, 
+    "relu": F.relu,
+    "gelu": F.gelu,
+    "silu": F.silu,
+    "mish": F.mish,
+    "softplus": F.softplus,
+    "softsign": F.softsign,
+    "selu": F.selu,
+    "elu": F.elu,
+    "celu": F.celu,
+    "hardshrink": F.hardshrink,
+}
+
+
+def keep_mean_and_std(func):
+    @wraps(func)
+    def wrapper(x: torch.Tensor) -> torch.Tensor:
+        mean = x.mean()
+        std = x.std()
+        y = func(x)
+        y = y - y.mean() + mean
+        y = y / y.std() * std
+        return y
+    return wrapper
+
+
+def get_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--activation", 
+        type=str, 
+        default="gelu", 
+        choices=list(activation_name_to_function.keys()) + ["all"], 
+        nargs="+", 
+        help="Activation function to use",
+    )
+    parser.add_argument("--num_runs", type=int, default=5, help="Number of runs to perform")
+    parser.add_argument("--retain_distribution", action="store_true", help="Retain the mean and standard deviation of the input tensor after applying the activation function")
+    parser.add_argument("--savefile", type=str, default="results.csv", help="File to save the results to")
+    parser.add_argument("--seed", type=int, default=100, help="Seed for reproducibility. Actual seed will be seed + run_number")
+    args = parser.parse_args()
+    args.activation = [args.activation] if isinstance(args.activation, str) else args.activation
+    if "all" in args.activation:
+        args.activation = list(activation_name_to_function.keys())
+    return args
+
+
+def test_value_activation_functions():
+    args = get_args()
+    for activation_name in args.activation:
+        if activation_name not in activation_name_to_function:
+            raise ValueError(f"Invalid activation function: {activation_name}")
+        activation_function = activation_name_to_function[activation_name]
+        if args.retain_distribution:
+            activation_function = keep_mean_and_std(activation_function)
+            activation_name = f"{activation_name}_mean_std"
+        
+        setting_str = f"{activation_name}{'_mean_std' if args.retain_distribution else ''}"
+        dashes = "-" * len(setting_str)
+
+        for run_num in range(args.num_runs):
+            print(f"\n\n{dashes}\n{setting_str} ({run_num+1}/{args.num_runs})\n{dashes}\n")
+            torch.manual_seed(args.seed+run_num)
+            (
+                net,
+                train_losses, train_accs, val_losses, val_accs, val_pplxs,
+                train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+                epoch_train, epoch_val, cumulative_time_taken,
+                grad_norms, grad_norm_steps, grad_norm_tokens,
+            ) = main(linear_value=False)
+            del net
+            results = {
+                "activation": [activation_name],
+                "run_number": [run_num+1],
+                "train_losses": [str(train_losses)],
+                "train_accs": [str(train_accs)],
+                "val_losses": [str(val_losses)],
+                "val_accs": [str(val_accs)],
+                "val_pplxs": [str(val_pplxs)],
+                "train_steps": [str(train_steps)],
+                "val_steps": [str(val_steps)],
+                "tokens_seen_train": [str(tokens_seen_train)],
+                "tokens_seen_val": [str(tokens_seen_val)],
+                "epoch_train": [str(epoch_train)],
+                "epoch_val": [str(epoch_val)],
+                "cumulative_time_taken": [str(cumulative_time_taken)],
+                "grad_norms": [str(grad_norms)],
+                "grad_norm_steps": [str(grad_norm_steps)],
+                "grad_norm_tokens": [str(grad_norm_tokens)],
+                "seed": [args.seed+run_num],
+            }
+            if run_num == 0 and activation_name == args.activation[0]:
+                pd.DataFrame(results).to_csv(args.savefile, index=False)
+            else:
+                with open(args.savefile, "a") as f:
+                    pd.DataFrame(results).to_csv(f, index=False, header=False)
+
+
+
+def test_linear_vs_non_linear_value_old_dont_call():
+    raise NotImplementedError("This function is not up to date and should not be called.")
     # Set seed for reproducibility
     initial_seed = 100
     num_runs = 5
