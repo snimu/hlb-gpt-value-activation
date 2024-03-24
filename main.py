@@ -718,8 +718,12 @@ def main(value_activation):
     )
 
 
+def identity(x: torch.Tensor) -> torch.Tensor:
+    return x
+
+
 activation_name_to_function = {
-    "identity": lambda x: x,
+    "identity": identity,
     "sigmoid": F.sigmoid,
     "tanh": F.tanh, 
     "relu": F.relu,
