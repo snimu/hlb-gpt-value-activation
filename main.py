@@ -742,11 +742,11 @@ activation_name_to_function = {
 def keep_mean_and_std(func):
     @wraps(func)
     def wrapper(x: torch.Tensor) -> torch.Tensor:
-        mean = x.mean()
-        std = x.std()
+        mean = x.mean(dim=-1, keepdim=True)
+        std = x.std(dim=-1, keepdim=True)
         y = func(x)
-        y = y - y.mean() + mean
-        y = y / y.std() * std
+        y = y - y.mean(dim=-1, keepdim=True) + mean
+        y = y / y.std(dim=-1, keepdim=True) * std
         return y
     return wrapper
 
