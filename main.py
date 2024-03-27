@@ -798,6 +798,7 @@ def test_value_activation_functions():
             if retain_distribution:
                 activation_function = keep_mean_and_std(activation_function)
 
+            seed = args.seed
             for run_num in range(args.num_runs):
                 hyp = deepcopy(hyp_old)
                 run_number_global += 1
@@ -809,6 +810,7 @@ def test_value_activation_functions():
                 print(f"\n\n{dashes}\n{setting_str}\n{dashes}\n")
                 torch.manual_seed(args.seed+run_num)
                 while True:
+                    seed += 1
                     try:
                         (
                             net,
@@ -820,6 +822,7 @@ def test_value_activation_functions():
                         break
                     except RuntimeError:
                         setting_str -= 1
+                        hyp = deepcopy(hyp_old)
                         print("\nRETRYING\n")
                         continue
                 del net
