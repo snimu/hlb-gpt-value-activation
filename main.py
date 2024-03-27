@@ -724,9 +724,9 @@ def identity(x: torch.Tensor) -> torch.Tensor:
 
 activation_name_to_function = {
     "identity": identity,
-    "sigmoid": F.sigmoid,
-    "tanh": F.tanh, 
-    "relu": F.relu,
+    "sigmoid": F.sigmoid,  # unstable; after step ~600, every ten steps is several epochs
+    "tanh": F.tanh, # is stable
+    "relu": F.relu,  # unstable
     "gelu": F.gelu,
     "silu": F.silu,
     "mish": F.mish,
