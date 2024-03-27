@@ -518,7 +518,7 @@ def eval(net):
 
     return val_acc.item(), val_loss.item(), val_perplexity.item()
 
-def train(value_activation):
+def train(value_activation, max_epochs):
 
     #################
     #     Init      #
@@ -680,6 +680,8 @@ def train(value_activation):
 
             # Since we're not running over epochs anymore, we have to manually calculate roughly what epoch it is. This is different than the standard random derangement of sampled sequences and has different pros/cons, is my understanding. :thumbsup:
             epoch = tokens_seen//len(data['train'])
+            if epoch >= max_epochs:
+                raise RuntimeError("Training has reached the maximum number of epochs.")
 
             if curr_step % hyp['opt']['eval_every'] == 0:
                 ender.record()
@@ -763,6 +765,7 @@ def get_args() -> argparse.Namespace:
         help="Activation function to use",
     )
     parser.add_argument("--num_runs", type=int, default=5, help="Number of runs to perform")
+    parser.add_argument("--max_epochs", type=int, default=5, help="Maximum number of epochs to train for")
     parser.add_argument("--retain_distribution", type=int, default=0, choices=[0, 1], nargs="+", help="Retain the mean and standard deviation of the input tensor after applying the activation function")
     parser.add_argument("--savefile", type=str, default="results.csv", help="File to save the results to")
     parser.add_argument("--seed", type=int, default=100, help="Seed for reproducibility. Actual seed will be seed + run_number")
@@ -805,13 +808,18 @@ def test_value_activation_functions():
                 dashes = ":" * max(len(s) for s in setting_str.split("\n"))
                 print(f"\n\n{dashes}\n{setting_str}\n{dashes}\n")
                 torch.manual_seed(args.seed+run_num)
-                (
-                    net,
-                    train_losses, train_accs, val_losses, val_accs, val_pplxs,
-                    train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
-                    epoch_train, epoch_val, cumulative_time_taken,
-                    grad_norms, grad_norm_steps, grad_norm_tokens,
-                ) = train(value_activation=activation_function)
+                while True:
+                    try:
+                        (
+                            net,
+                            train_losses, train_accs, val_losses, val_accs, val_pplxs,
+                            train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+                            epoch_train, epoch_val, cumulative_time_taken,
+                            grad_norms, grad_norm_steps, grad_norm_tokens,
+                        ) = train(value_activation=activation_function, max_epochs=args.max_epochs)
+                        break
+                    except RuntimeError:
+                        continue
                 del net
                 results = {
                     "activation": [activation_name],
