@@ -765,6 +765,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--retain_distribution", type=int, default=0, choices=[0, 1], nargs="+", help="Retain the mean and standard deviation of the input tensor after applying the activation function")
     parser.add_argument("--savefile", type=str, default="results.csv", help="File to save the results to")
     parser.add_argument("--seed", type=int, default=100, help="Seed for reproducibility. Actual seed will be seed + run_number")
+    parser.add_argument("--append", action="store_true", help="Append to the savefile instead of overwriting it")
     args = parser.parse_args()
     args.activation = [args.activation] if isinstance(args.activation, str) else args.activation
     if "all" in args.activation:
@@ -829,7 +830,7 @@ def test_value_activation_functions():
                     "grad_norm_tokens": [str(grad_norm_tokens)],
                     "seed": [args.seed+run_num],
                 }
-                if run_num == 0 and activation_name == args.activation[0]:
+                if (not args.append) and (run_num == 0) and (activation_name == args.activation[0]):
                     pd.DataFrame(results).to_csv(args.savefile, index=False)
                 else:
                     with open(args.savefile, "a") as f:
