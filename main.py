@@ -845,7 +845,7 @@ def test_value_activation_functions():
                     "grad_norms": [str(grad_norms)],
                     "grad_norm_steps": [str(grad_norm_steps)],
                     "grad_norm_tokens": [str(grad_norm_tokens)],
-                    "seed": [args.seed+run_num],
+                    "seed": [seed],
                 }
                 if (not args.append) and (run_num == 0) and (activation_name == args.activation[0]):
                     pd.DataFrame(results).to_csv(args.savefile, index=False)
