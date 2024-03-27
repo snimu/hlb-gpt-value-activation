@@ -12,6 +12,7 @@ try:
 except NameError:
   pass ## we're still good
 """
+from copy import deepcopy
 import argparse
 from functools import partial, wraps
 import subprocess
@@ -781,6 +782,7 @@ def test_value_activation_functions():
     args = get_args()
     setting_num = 0
     run_number_global = 0
+    hyp_old = deepcopy(hyp)
     total_num_runs = len(args.activation) * len(args.retain_distribution) * args.num_runs
     for activation_name in args.activation:
         if activation_name not in activation_name_to_function:
@@ -793,6 +795,7 @@ def test_value_activation_functions():
                 activation_function = keep_mean_and_std(activation_function)
 
             for run_num in range(args.num_runs):
+                hyp = deepcopy(hyp_old)
                 run_number_global += 1
                 setting_str = f"{activation_name.upper()}{' (distribution retained)' if retain_distribution else ''}\n"
                 setting_str += f"Training num {run_number_global}/{total_num_runs} "
