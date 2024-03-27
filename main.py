@@ -782,6 +782,7 @@ def test_value_activation_functions():
     args = get_args()
     setting_num = 0
     run_number_global = 0
+    global hyp
     hyp_old = deepcopy(hyp)
     total_num_runs = len(args.activation) * len(args.retain_distribution) * args.num_runs
     for activation_name in args.activation:
