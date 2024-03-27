@@ -1,0 +1,2 @@
+python main.py --activation identity tanh gelu --num_runs 20 --retain_distribution 1 --savefile "results_identity_tanh_gelu_retain_distribution.csv"
+python main.py --actiation tanh gelu --num_runs 20 --retain_distribution 0 --savefile "results_tanh_gelu.csv"
