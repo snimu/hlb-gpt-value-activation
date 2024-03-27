@@ -518,7 +518,7 @@ def eval(net):
 
     return val_acc.item(), val_loss.item(), val_perplexity.item()
 
-def main(value_activation):
+def train(value_activation):
 
     #################
     #     Init      #
@@ -811,7 +811,7 @@ def test_value_activation_functions():
                     train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                     epoch_train, epoch_val, cumulative_time_taken,
                     grad_norms, grad_norm_steps, grad_norm_tokens,
-                ) = main(value_activation=activation_function)
+                ) = train(value_activation=activation_function)
                 del net
                 results = {
                     "activation": [activation_name],
@@ -863,7 +863,7 @@ def test_linear_vs_non_linear_value_old_dont_call():
                 train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
                 epoch_train, epoch_val, cumulative_time_taken,
                 grad_norms, grad_norm_steps, grad_norm_tokens,
-            ) = main(linear_value=linear_value)
+            ) = train(linear_value=linear_value)
             del net  # Actively delete the network to free up memory
             results = {
                 "linear_value": [linear_value],
