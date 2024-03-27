@@ -819,6 +819,8 @@ def test_value_activation_functions():
                         ) = train(value_activation=activation_function, max_epochs=args.max_epochs)
                         break
                     except RuntimeError:
+                        setting_str -= 1
+                        print("\nRETRYING\n")
                         continue
                 del net
                 results = {
