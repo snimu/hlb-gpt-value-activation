@@ -681,7 +681,7 @@ def train(value_activation, max_epochs):
             # Since we're not running over epochs anymore, we have to manually calculate roughly what epoch it is. This is different than the standard random derangement of sampled sequences and has different pros/cons, is my understanding. :thumbsup:
             epoch = tokens_seen//len(data['train'])
             if epoch >= max_epochs:
-                raise RuntimeError("Training has reached the maximum number of epochs.")
+                return tuple([None]*16)
 
             if curr_step % hyp['opt']['eval_every'] == 0:
                 ender.record()
@@ -809,23 +809,25 @@ def test_value_activation_functions():
                 dashes = ":" * max(len(s) for s in setting_str.split("\n"))
                 print(f"\n\n{dashes}\n{setting_str}\n{dashes}\n")
                 torch.manual_seed(args.seed+run_num)
-                while True:
+                for i in range(3):  # don't do this too often
                     seed += 1
-                    try:
-                        (
-                            net,
-                            train_losses, train_accs, val_losses, val_accs, val_pplxs,
-                            train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
-                            epoch_train, epoch_val, cumulative_time_taken,
-                            grad_norms, grad_norm_steps, grad_norm_tokens,
-                        ) = train(value_activation=activation_function, max_epochs=args.max_epochs)
-                        break
-                    except RuntimeError:
-                        setting_str -= 1
+                    ret_vals = (
+                        net,
+                        train_losses, train_accs, val_losses, val_accs, val_pplxs,
+                        train_steps, val_steps, tokens_seen_train, tokens_seen_val, 
+                        epoch_train, epoch_val, cumulative_time_taken,
+                        grad_norms, grad_norm_steps, grad_norm_tokens,
+                    ) = train(value_activation=activation_function, max_epochs=args.max_epochs)
+                    if all(r is None for r in ret_vals):
+                        run_number_global -= 1
                         hyp = deepcopy(hyp_old)
-                        print("\nRETRYING\n")
-                        continue
-                del net
+                        if i == 2:
+                            raise RuntimeError(f"Didn't work after {i+1} tries.")
+                        else:
+                            print("\nRETRYING\n")
+                    else:
+                        del net, ret_vals
+                        break
                 results = {
                     "activation": [activation_name],
                     "retain_distribution": [retain_distribution],
